@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CKB – Community Knowledge Bridge</title>
+<style>
+:root{--bg:#fff;--panel:#f6f7f9;--ink:#1c1f24;--mute:#6b7280;--line:#e2e5ea;--accent:#4f46e5;--user:#e8ebff;--bot:#f1f2f4;--warn:#92400e;--warnbg:#fef3c7;--danger:#b91c1c}
+@media (prefers-color-scheme:dark){:root{--bg:#16181d;--panel:#1d2026;--ink:#e8eaed;--mute:#9aa1ab;--line:#2c3038;--accent:#8b85ff;--user:#2a2d55;--bot:#23262d;--warn:#fcd34d;--warnbg:#3b2f0b;--danger:#f87171}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{display:grid;grid-template-columns:320px 1fr;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+aside{background:var(--panel);border-right:1px solid var(--line);padding:16px;overflow:auto;display:flex;flex-direction:column;gap:12px}
+h2{margin:0;font-size:16px}
+small,.mute{color:var(--mute);font-size:12.5px}
+button,select{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+button.link{border:0;background:none;padding:0 4px;color:var(--danger);font-size:12.5px;white-space:nowrap;flex:none}
+button:disabled{opacity:.5;cursor:not-allowed}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row select{flex:1;min-width:0}
+.doc{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);word-break:break-all;display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.code{padding:10px;border:1px solid var(--accent);border-radius:8px;background:var(--bg)}
+.code strong{font:600 17px ui-monospace,monospace;letter-spacing:1px;display:block;margin:4px 0}
+.status{display:flex;align-items:center;gap:6px}
+.dot{width:9px;height:9px;border-radius:50%;background:#9ca3af}
+.dot.ok{background:#22c55e}.dot.bad{background:#ef4444}
+main{display:flex;flex-direction:column;min-width:0;height:100vh}
+header{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line)}
+#log{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.msg{max-width:78%;padding:10px 14px;border-radius:12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.user{align-self:flex-end;background:var(--user)}
+.bot{align-self:flex-start;background:var(--bot)}
+.bot.refused{border-left:3px solid var(--mute)}
+.bot.clarify{border-left:3px solid var(--accent)}
+.chip{font:600 12px system-ui;border:0;border-radius:6px;padding:1px 6px;margin:0 1px;background:var(--accent);color:#fff}
+.cite{margin-top:8px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-size:13px;white-space:normal}
+.note{margin-top:8px;padding:6px 10px;border-radius:8px;background:var(--warnbg);color:var(--warn);font-size:13px;white-space:normal}
+.progress{height:6px;margin:8px 0 4px;border-radius:999px;background:var(--line);overflow:hidden}
+.progress>span{display:block;height:100%;width:0;border-radius:999px;background:var(--accent);transition:width .2s}
+.progress.busy>span{width:35%;animation:slide 1.3s ease-in-out infinite}
+@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(290%)}}
+@media (prefers-reduced-motion:reduce){.progress.busy>span{width:100%;animation:pulse 1.6s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.35}}}
+form{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--line)}
+#q{flex:1;padding:10px 12px;font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:10px}
+@media (max-width:760px){body{grid-template-columns:1fr;grid-template-rows:auto 1fr}aside{max-height:45vh;border-right:0;border-bottom:1px solid var(--line)}main{height:auto}}
+</style>
+</head>
+<body>
+<aside>
+  <div class="status"><span class="dot" id="dot"></span><small id="statusText">Connecting…</small></div>
+
+  <div id="orgBox" hidden>
+    <h2>Organisation</h2>
+    <div class="row" style="margin-top:6px">
+      <select id="org" aria-label="Organisation"></select>
+      <button id="newOrg">New org</button>
+    </div>
+    <div id="codeBox"></div>
+  </div>
+
+  <h2>Documents</h2>
+  <div id="uploadBox">
+    <input type="file" id="file" multiple hidden>
+    <button id="uploadBtn">Upload documents</button>
+    <div class="progress" id="progress" role="progressbar" aria-label="Upload progress" hidden><span></span></div>
+    <div><small id="uploadMsg"></small></div>
+  </div>
+  <div id="docs"><small>Loading…</small></div>
+  <small id="docsHint">CKB answers only from these documents and names its sources.</small>
+  <button class="link" id="deleteOrg" hidden>Delete this organisation and all its documents</button>
+</aside>
+
+<main>
+  <header>
+    <strong id="title">Ask about the documents</strong>
+    <span>
+      <select id="lang" aria-label="Answer language"><option value="auto">Auto-detect</option></select>
+      <button id="newChat">New chat</button>
+    </span>
+  </header>
+  <div id="log"></div>
+  <form id="f">
+    <input id="q" type="text" maxlength="2000" placeholder="Ask a question…" autocomplete="off">
+    <button class="primary" id="send">Send</button>
+  </form>
+</main>
+
+<script>
+// Where the backend is. Hosted on its own site (the tester UI), set BACKEND_URL
+// to the Modal address, e.g. "https://fihcloudservices--ckb.us-east.modal.run", and
+// add this site's address to CKB_ALLOWED_ORIGINS on the backend. Left empty:
+// served by api.py, the API is on the same address, so relative paths work;
+// opened as a local file, it uses the SSH tunnel from API.md §5.
+const BACKEND_URL = "https://fihcloudservices--ckb.us-east.modal.run";
+const API = BACKEND_URL.replace(/\/$/, "") || (location.protocol === "file:" ? "http://localhost:8000" : "");
+const $ = id => document.getElementById(id);
+let sessionId = null;
+let orgsEnabled = false, orgsOnly = false;
+let limits = null;                 // {max_documents, max_bytes, extensions} of the open org
+const DOCS_CORPUS = "";            // dropdown value for CKB's own approved documents
+
+function el(tag, cls, text){
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;   // always text, never HTML
+  return e;
+}
+
+async function api(path, opts = {}){
+  const r = await fetch(API + path, opts);
+  if (!r.ok) {
+    let detail = r.status;
+    try { detail = (await r.json()).detail || detail; } catch {}
+    const err = new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    err.status = r.status;
+    throw err;
+  }
+  return r.json();
+}
+
+/* ---------- access codes, remembered in this browser only ---------- */
+function codes(){ try { return JSON.parse(localStorage.getItem("ckbOrgCodes") || "{}"); } catch { return {}; } }
+function saveCode(orgId, code){
+  const all = codes();
+  if (code) all[orgId] = code; else delete all[orgId];
+  try { localStorage.setItem("ckbOrgCodes", JSON.stringify(all)); } catch {}
+}
+const currentOrg = () => $("org").value;
+const orgHeaders = (extra = {}) => currentOrg() ? { ...extra, "X-Org-Code": codes()[currentOrg()] || "" } : extra;
+
+/* ---------- status, organisations, documents, languages ---------- */
+async function checkHealth(){
+  try {
+    const h = await api("/health");
+    $("dot").className = "dot ok";
+    $("statusText").textContent = `Connected (${h.mode})`;
+    return h;
+  } catch {
+    $("dot").className = "dot bad";
+    $("statusText").textContent = "Can't reach the backend. It may still be starting (a few minutes); trying again…";
+    return null;
+  }
+}
+
+async function loadOrgs(select){
+  const { orgs } = await api("/orgs");
+  const box = $("org"), mine = codes();
+  box.replaceChildren();
+  if (!orgsOnly) box.append(new Option("CKB approved documents", DOCS_CORPUS));
+  else box.append(new Option("— choose an organisation —", "__none"));
+  for (const o of orgs) { const opt = new Option(o.name, o.org_id); opt.dataset.name = o.name; box.append(opt); }
+  refreshLocks();
+  const want = select ?? localStorage_get("ckbLastOrg");
+  if (want !== null && [...box.options].some(o => o.value === want)) box.value = want;
+  await openOrg(false);
+}
+// 🔒 marks orgs this browser has no access code for
+function refreshLocks(){
+  const mine = codes();
+  for (const opt of $("org").options)
+    if (opt.dataset.name) opt.textContent = opt.dataset.name + (mine[opt.value] ? "" : " 🔒");
+}
+function localStorage_get(k){ try { return localStorage.getItem(k); } catch { return null; } }
+function localStorage_set(k, v){ try { localStorage.setItem(k, v); } catch {} }
+
+async function openOrg(ask = true){
+  let org = currentOrg();
+  if (org && org !== "__none" && !codes()[org]) {
+    const code = ask ? prompt("Enter the access code for this organisation:") : null;
+    if (!code) { $("org").value = orgsOnly ? "__none" : DOCS_CORPUS; org = currentOrg(); }
+    else saveCode(org, code.trim());
+  }
+  refreshLocks();
+  localStorage_set("ckbLastOrg", org);
+  newChat(false);
+  $("codeBox").replaceChildren();
+  $("uploadMsg").textContent = "";       // a message about another org's upload would mislead
+  await loadDocs();
+}
+
+async function loadDocs(){
+  const org = currentOrg(), box = $("docs");
+  const isOrg = orgsEnabled && org && org !== "__none";
+  $("uploadBox").hidden = !isOrg;
+  $("deleteOrg").hidden = !isOrg;
+  $("title").textContent = isOrg ? `Ask about ${$("org").selectedOptions[0].text.replace(" 🔒", "")}`
+                                 : "Ask about the documents";
+  $("docsHint").textContent = isOrg ? "CKB answers only from this organisation's documents and names its sources."
+                                    : "CKB answers only from these approved documents and names its sources.";
+  if (orgsEnabled && org === "__none") { box.replaceChildren(el("small", "", "Choose an organisation, or create a new one.")); return; }
+  try {
+    if (!isOrg) {
+      const { documents } = await api("/documents");
+      box.replaceChildren();
+      if (!documents.length) box.append(el("small", "", "No documents indexed yet."));
+      for (const d of documents) {
+        const row = el("div", "doc"), info = el("div");
+        info.append(el("div", "", d.document), el("small", "", `${d.chunks} passages`));
+        row.append(info); box.append(row);
+      }
+      return;
+    }
+    const r = await api(`/orgs/${org}/documents`, { headers: orgHeaders() });
+    limits = r.limits;
+    box.replaceChildren();
+    if (!r.documents.length) box.append(el("small", "", "No documents yet. Upload some to start asking."));
+    for (const d of r.documents) {
+      const row = el("div", "doc"), info = el("div");
+      info.append(el("div", "", d.document),
+                  el("small", "", (d.chunks == null ? "" : `${d.chunks} passage${d.chunks === 1 ? "" : "s"} · `) + `${Math.ceil(d.bytes / 1024)} KB`));
+      const del = el("button", "link", "Delete"); del.type = "button";
+      del.onclick = () => deleteDoc(d.document);
+      row.append(info, del); box.append(row);
+    }
+  } catch (err) {
+    if (err.status === 403) {
+      saveCode(org, null);
+      refreshLocks();
+      box.replaceChildren(el("small", "", "Wrong access code. Choose the organisation again to re-enter it."));
+      $("uploadBox").hidden = true; $("deleteOrg").hidden = true;
+    } else box.replaceChildren(el("small", "", "Couldn't load documents: " + err.message));
+  }
+}
+
+async function loadLanguages(){
+  try {
+    const { languages } = await api("/languages");
+    const groups = { major: "Major languages", mayan: "Mayan languages (translated)", other: "Other (translated)" };
+    for (const [g, label] of Object.entries(groups)) {
+      const og = document.createElement("optgroup"); og.label = label;
+      for (const l of languages.filter(x => x.group === g)) {
+        const o = document.createElement("option"); o.value = l.code; o.textContent = l.name; og.append(o);
+      }
+      if (og.children.length) $("lang").append(og);
+    }
+  } catch {}
+}
+
+/* ---------- organisations: create, delete ---------- */
+$("org").onchange = () => openOrg(true);
+
+$("newOrg").onclick = async () => {
+  const name = (prompt("Name of the new organisation (1-60 characters):") || "").trim();
+  if (!name) return;
+  try {
+    const o = await api("/orgs", { method: "POST", headers: { "Content-Type": "application/json" },
+                                   body: JSON.stringify({ name }) });
+    saveCode(o.org_id, o.access_code);
+    await loadOrgs(o.org_id);
+    const box = el("div", "code");
+    box.append(el("small", "", "Access code for “" + o.name + "”. Write it down: it is shown only once, and you need it to open this organisation in another browser."),
+               el("strong", "", o.access_code));
+    $("codeBox").replaceChildren(box);
+  } catch (err) { alert("Couldn't create the organisation: " + err.message); }
+};
+
+$("deleteOrg").onclick = async () => {
+  const org = currentOrg(), name = $("org").selectedOptions[0].text;
+  if (!confirm(`Delete “${name}” and all its documents? This can't be undone.`)) return;
+  try {
+    await api(`/orgs/${org}`, { method: "DELETE", headers: orgHeaders() });
+    saveCode(org, null);
+    await loadOrgs(orgsOnly ? "__none" : DOCS_CORPUS);
+  } catch (err) { alert("Couldn't delete: " + err.message); }
+};
+
+/* ---------- documents: upload, delete ---------- */
+// Success messages go away after 3 s; errors stay until the next action.
+function flash(text){
+  const msg = $("uploadMsg");
+  msg.textContent = text;
+  setTimeout(() => { if (msg.textContent === text) msg.textContent = ""; }, 3000);
+}
+// Two phases: sending the file (real percentage), then CKB reading it (OCR,
+// speech, indexing), which reports no progress, so the bar just moves.
+function progress(pct){                    // a number 0-100, "busy", or null to hide
+  const bar = $("progress");
+  bar.hidden = pct === null;
+  bar.classList.toggle("busy", pct === "busy");
+  bar.firstElementChild.style.width = typeof pct === "number" ? pct + "%" : "";
+  if (typeof pct === "number") bar.setAttribute("aria-valuenow", Math.round(pct));
+  else bar.removeAttribute("aria-valuenow");
+}
+
+// fetch() can't report upload progress; XMLHttpRequest can (and follows redirects).
+function uploadFile(org, f, onSent, onReading){
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open("POST", `${API}/orgs/${org}/documents?filename=${encodeURIComponent(f.name)}`);
+    for (const [k, v] of Object.entries(orgHeaders({ "Content-Type": "application/octet-stream" })))
+      x.setRequestHeader(k, v);
+    x.upload.onprogress = ev => { if (ev.lengthComputable) onSent(100 * ev.loaded / ev.total); };
+    x.upload.onload = onReading;
+    x.onload = () => {
+      let body = null;
+      try { body = JSON.parse(x.responseText); } catch {}
+      if (x.status >= 200 && x.status < 300 && body) return resolve(body);
+      const detail = (body && body.detail) || x.status || "network error";
+      const err = new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+      err.status = x.status;
+      reject(err);
+    };
+    x.onerror = () => reject(new Error("couldn't reach the backend"));
+    x.send(f);
+  });
+}
+
+$("uploadBtn").onclick = () => $("file").click();
+$("file").onchange = async e => {
+  const msg = $("uploadMsg"), org = currentOrg();
+  const files = [...e.target.files];
+  $("uploadBtn").disabled = true;
+  for (const [i, f] of files.entries()) {
+    const ext = "." + f.name.split(".").pop().toLowerCase();
+    if (limits && !limits.extensions.includes(ext)) {
+      msg.textContent = `${f.name}: this file type isn't accepted (${limits.extensions.join(" ")}).`; break;
+    }
+    if (limits && limits.max_bytes != null && f.size > limits.max_bytes) {
+      msg.textContent = `${f.name}: larger than ${Math.round(limits.max_bytes / 1048576)} MB.`; break;
+    }
+    const which = files.length > 1 ? ` (${i + 1} of ${files.length})` : "";
+    progress(0);
+    msg.textContent = `Sending ${f.name}${which}…`;
+    try {
+      const r = await uploadFile(org, f,
+        pct => { progress(pct); msg.textContent = `Sending ${f.name}${which}… ${Math.round(pct)}%`; },
+        () => { progress("busy");
+                msg.textContent = `Reading ${f.name}${which}… Seconds for typed documents; minutes for scanned PDFs, audio and video.`; });
+      flash(`${r.document}: ready (${r.chunks} passage${r.chunks === 1 ? "" : "s"}).`);
+    } catch (err) { msg.textContent = `${f.name}: ${err.message}`; break; }
+    finally { progress(null); }
+    await loadDocs();
+  }
+  $("uploadBtn").disabled = false;
+  e.target.value = "";
+  loadDocs();
+};
+
+async function deleteDoc(name){
+  if (!confirm(`Delete “${name}”? CKB will no longer answer from it.`)) return;
+  try {
+    await api(`/orgs/${currentOrg()}/documents/${encodeURIComponent(name)}`, { method: "DELETE", headers: orgHeaders() });
+    flash(`${name} deleted.`);
+  } catch (err) { $("uploadMsg").textContent = "Couldn't delete: " + err.message; }
+  loadDocs();
+}
+
+/* ---------- chat ---------- */
+function addUser(text){ const m = el("div", "msg user", text); $("log").append(m); scroll(); }
+function scroll(){ $("log").scrollTop = $("log").scrollHeight; }
+
+function renderBot(r){
+  const m = el("div", "msg bot" + (r.refused ? " refused" : "") + (r.clarify ? " clarify" : ""));
+  const byLabel = Object.fromEntries((r.citations || []).map(c => [c.label, c]));
+  const detail = el("div", "cite"); detail.hidden = true;
+  // Turn "[S1]" into clickable chips that show the matching source
+  r.answer.split(/(\[S\d+\])/g).forEach(part => {
+    const t = part.match(/^\[(S\d+)\]$/);
+    if (t && byLabel[t[1]]) {
+      const c = byLabel[t[1]];
+      const chip = el("button", "chip", t[1]);
+      chip.type = "button";
+      chip.onclick = () => {
+        detail.replaceChildren(el("strong", "", `${c.document} · ${c.location}`), el("div", "mute", c.snippet || ""));
+        detail.hidden = false;
+      };
+      m.append(chip);
+    } else m.append(document.createTextNode(part));
+  });
+  m.append(detail);
+  if (r.translation_notice) m.append(el("div", "note", r.translation_notice));
+  if (r.note) m.append(el("div", "note", r.note));
+  $("log").append(m); scroll();
+}
+
+$("f").onsubmit = async e => {
+  e.preventDefault();
+  const text = $("q").value.trim();
+  if (!text) return;
+  const org = currentOrg();
+  if (orgsEnabled && org === "__none") { alert("Choose an organisation first, or create a new one."); return; }
+  $("q").value = ""; addUser(text);
+  $("send").disabled = true; $("q").disabled = true;
+  const wait = el("div", "msg bot mute", "Thinking…"); $("log").append(wait); scroll();
+  try {
+    const body = { message: text, session_id: sessionId, language: $("lang").value };
+    if (orgsEnabled && org) body.org_id = org;
+    const r = await api("/chat", {
+      method: "POST", headers: orgHeaders({ "Content-Type": "application/json" }), body: JSON.stringify(body)
+    });
+    sessionId = r.session_id;
+    wait.remove(); renderBot(r);
+  } catch (err) {
+    wait.textContent = "Something went wrong: " + err.message;
+  } finally {
+    $("send").disabled = false; $("q").disabled = false; $("q").focus();
+  }
+};
+
+async function newChat(focus = true){
+  if (sessionId) { try { await api("/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: sessionId }) }); } catch {} }
+  sessionId = null; $("log").replaceChildren(); if (focus) $("q").focus();
+}
+$("newChat").onclick = () => newChat();
+
+(async () => {
+  loadLanguages();
+  const h = await checkHealth();
+  orgsEnabled = !!(h && h.orgs); orgsOnly = !!(h && h.orgs_only);
+  $("orgBox").hidden = !orgsEnabled;
+  if (orgsEnabled) { try { await loadOrgs(); } catch (err) { $("docs").replaceChildren(el("small", "", "Couldn't load organisations: " + err.message)); } }
+  else loadDocs();
+  // Every request keeps the cloud GPU running (and billed), so the status
+  // check runs only while this tab is visible and someone used it in the
+  // last 10 minutes. A forgotten tab lets the backend shut down.
+  let lastUse = Date.now();
+  for (const ev of ["keydown", "pointerdown"]) addEventListener(ev, () => { lastUse = Date.now(); });
+  setInterval(() => {
+    if (document.visibilityState === "visible" && Date.now() - lastUse < 10 * 60000) checkHealth();
+  }, 15000);
+})();
+</script>
+</body>
+</html>
